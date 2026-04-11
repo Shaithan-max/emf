@@ -1,42 +1,59 @@
-from flask import Flask, render_template, request, jsonify
+import streamlit as st
+import pandas as pd
+import numpy as np
+import plotly.express as px
+import plotly.graph_objects as go
 from supabase import create_client
-import os
+from sklearn.linear_model import LinearRegression
+from sklearn.preprocessing import PolynomialFeatures
 
-app = Flask(__name__)
+# 1. Connection to Supabase
+# Make sure these match the keys in your Streamlit "Secrets"
+SUB_URL = st.secrets["SUPABASE_URL"]
+SUB_KEY = st.secrets["SUPABASE_KEY"]
+supabase = create_client(SUB_URL, SUB_KEY)
 
-# Replace these with your Supabase credentials
-SUPABASE_URL = "https://your-project-id.supabase.co"
-SUPABASE_KEY = "your-anon-key"
-supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+st.set_page_config(page_title="AI EMF Risk Mapper", layout="wide")
+st.title("⚡ AI-Based EMF Monitoring & Risk Mapping")
 
-@app.route('/')
-def index():
-    return render_template('index.html')
+# 2. Function to fetch data from Supabase
+def fetch_data():
+    try:
+        # Change "emf_readings" to whatever your table name is in Supabase
+        response = supabase.table("emf_readings").select("*").order("id", desc=True).limit(100).execute()
+        return pd.DataFrame(response.data)
+    except Exception as e:
+        st.error(f"Error fetching data: {e}")
+        return pd.DataFrame()
 
-# ESP32 will send data here
-@app.route('/api/data', methods=['POST'])
-def receive_data():
-    content = request.json
-    # Insert data into Supabase
-    data = supabase.table("readings").insert({
-        "distance": content['distance'], 
-        "intensity": content['intensity']
-    }).execute()
-    return jsonify({"status": "success"}), 200
+df = fetch_data()
 
-# Dashboard will fetch data from here
-@app.route('/api/stats')
-def get_stats():
-    # Fetch the latest 20 readings
-    response = supabase.table("readings").select("*").order("id", desc=True).limit(20).execute()
-    rows = response.data
+if not df.empty:
+    latest = df.iloc[0]
+    col1, col2 = st.columns(2)
     
-    latest_val = rows[0]['intensity'] if rows else 0
-    return jsonify({
-        "latest_intensity": latest_val,
-        "history": [r['intensity'] for r in rows][::-1]
-    })
+    with col1:
+        st.metric("Latest Intensity", f"{latest['intensity']:.2f} µT")
+        st.subheader("Field Intensity Over Time")
+        st.line_chart(df.set_index('id')['intensity'])
 
-# Vercel requires this for serverless execution
-if __name__ == '__main__':
-    app.run()
+    # 3. AI Prediction Logic
+    # We need at least a few points to train the model
+    if len(df) > 5:
+        X = df[['distance']].values
+        y = df['intensity'].values
+        poly = PolynomialFeatures(degree=2)
+        model = LinearRegression().fit(poly.fit_transform(X), y)
+
+        with col2:
+            st.subheader("2D AI Exposure Map")
+            x_grid = np.linspace(0.1, 5, 50)
+            preds = model.predict(poly.transform(x_grid.reshape(-1, 1)))
+            z_data = np.tile(preds, (20, 1))
+            
+            fig_heat = px.imshow(z_data, x=x_grid, color_continuous_scale='RdYlGn_r')
+            st.plotly_chart(fig_heat)
+    else:
+        st.info("Collecting more data points for AI training...")
+else:
+    st.warning("Database is currently empty. Waiting for ESP32 data...")
