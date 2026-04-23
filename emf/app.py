@@ -31,7 +31,7 @@ def fetch_data():
         return pd.DataFrame()
 
 # --- 3. UI LAYOUT ---
-st.title("⚡ AI-Based EMF Monitoring & Risk Mapping")
+st.title("AI-Based EMF Monitoring & Risk Mapping")
 
 df = fetch_data()
 
@@ -65,7 +65,7 @@ if not df.empty:
         X_poly = poly.fit_transform(X)
         model = LinearRegression().fit(X_poly, y)
 
-        tab1, tab2 = st.tabs(["📊 Predictive Curve", "🌡️ Heatmap"])
+        tab1, tab2 = st.tabs(["Predictive Curve", "🌡️ Heatmap"])
 
         with tab1:
             dist_range = np.linspace(0.1, 10, 100).reshape(-1, 1)
