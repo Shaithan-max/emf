@@ -1,0 +1,16 @@
+toml
+[theme]
+# The primary color for widgets, buttons, and sliders
+primaryColor = "#00FF41" 
+
+# The background color for the main content area
+backgroundColor = "#0B0E14"
+
+# The background color for the sidebar and secondary elements
+secondaryBackgroundColor = "#161B22"
+
+# The main text color
+textColor = "#E6edf3"
+
+# The font style 
+font = "monospace"
