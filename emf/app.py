@@ -85,7 +85,7 @@ st.markdown("<div class='glowing-title'>⚡ AI-Based EMF Risk Mapper</div>", uns
 st.markdown("<div class='quote-text'>\"Mapping the invisible currents that power our world to ensure a safer tomorrow.\"</div>", unsafe_allow_html=True)
 # THE MISSING LINES: Apply the Title and the Quote
 
-
+df = fetch_data()
 # --- 4. LOGIC ---
 if not df.empty:
     # Show the raw data table for a second to verify it's working
