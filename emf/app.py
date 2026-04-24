@@ -10,8 +10,69 @@ from sklearn.preprocessing import PolynomialFeatures
 # --- 1. CONFIGURATION ---
 st.set_page_config(page_title="AI EMF Risk Mapper", layout="wide")
 
-# Fetch credentials from Streamlit Secrets
-# Ensure these are set in Streamlit Cloud > Settings > Secrets
+# --- 🔥 BACKGROUND FIX (MOVED UP + FIXED CSS) ---
+custom_style = """
+<style>
+
+/* BACKGROUND IMAGE */
+.stApp {
+    background: linear-gradient(rgba(5, 11, 20, 0.85), rgba(5, 11, 20, 0.95)),
+                url("https://upload.wikimedia.org/wikipedia/commons/thumb/c/cd/High_voltage_power_lines.jpg/1920px-High_voltage_power_lines.jpg");
+    background-size: cover !important;
+    background-position: center !important;
+    background-attachment: fixed !important;
+}
+
+/* MAKE ALL STREAMLIT LAYERS TRANSPARENT */
+[data-testid="stAppViewContainer"],
+[data-testid="stHeader"],
+[data-testid="stToolbar"],
+.main,
+.block-container {
+    background: transparent !important;
+}
+
+/* EXTRA FORCE (IMPORTANT) */
+html, body, [class*="css"] {
+    background: transparent !important;
+}
+
+/* TITLE */
+.glowing-title {
+    font-size: 40px;
+    font-weight: 900;
+    color: #00FFAA;
+    text-align: center;
+    text-shadow: 0px 0px 10px rgba(0, 255, 170, 0.4);
+    margin-bottom: 5px;
+}
+
+/* QUOTE */
+.quote-text {
+    font-size: 16px;
+    font-style: italic;
+    color: #A0AEC0;
+    text-align: center;
+    margin-bottom: 30px;
+    letter-spacing: 1px;
+}
+
+/* METRIC BOX */
+[data-testid="stMetric"] {
+    background-color: rgba(11, 20, 38, 0.5) !important;
+    backdrop-filter: blur(4px);
+    border: 1px solid rgba(0, 255, 170, 0.3) !important;
+    padding: 15px;
+    border-radius: 8px;
+}
+
+</style>
+"""
+
+# ✅ APPLY CSS EARLY
+st.markdown(custom_style, unsafe_allow_html=True)
+
+# Fetch credentials
 try:
     SUB_URL = st.secrets["SUPABASE_URL"]
     SUB_KEY = st.secrets["SUPABASE_KEY"]
@@ -19,99 +80,45 @@ try:
 except Exception as e:
     st.error("Missing Secrets! Make sure SUPABASE_URL and SUPABASE_KEY are in Streamlit settings.")
 
-# --- 2. DATA FETCHING ---
+# --- DATA FETCH ---
 def fetch_data():
     try:
-        # UPDATED: Table name is now emf_readings
         response = supabase.table("emf_readings").select("*").order("id", desc=True).limit(100).execute()
         return pd.DataFrame(response.data)
     except Exception as e:
-        # This will show us if the error is RLS, Table Name, or Connection
         st.error(f"Internal Database Error: {e}")
         return pd.DataFrame()
 
-# --- 3. UI LAYOUT ---
-custom_style = """
-<style>
-    /* 1. NUCLEAR BACKGROUND FIX */
-    /* Put the image on the very bottom layer */
-    .stApp {
-        background-image: linear-gradient(rgba(5, 11, 20, 0.85), rgba(5, 11, 20, 0.95)), 
-                          url("https://upload.wikimedia.org/wikipedia/commons/thumb/c/cd/High_voltage_power_lines.jpg/1920px-High_voltage_power_lines.jpg") !important;
-        background-size: cover !important;
-        background-position: center !important;
-        background-attachment: fixed !important;
-    }
-    
-    /* Force the middle layers to be see-through so the image shows up! */
-    [data-testid="stAppViewContainer"], [data-testid="stHeader"] {
-        background-color: transparent !important;
-    }
-
-    /* 2. Main Title Styling */
-    .glowing-title {
-        font-size: 40px;
-        font-weight: 900;
-        color: #00FFAA;
-        text-align: center;
-        text-shadow: 0px 0px 10px rgba(0, 255, 170, 0.4);
-        margin-bottom: 5px;
-    }
-    
-    /* 3. Quote Styling */
-    .quote-text {
-        font-size: 16px;
-        font-style: italic;
-        color: #A0AEC0;
-        text-align: center;
-        margin-bottom: 30px;
-        letter-spacing: 1px;
-    }
-    
-    /* 4. Elegant Glass-like Data Boxes */
-    [data-testid="stMetric"] {
-        background-color: rgba(11, 20, 38, 0.5) !important;
-        backdrop-filter: blur(4px);
-        border: 1px solid rgba(0, 255, 170, 0.3) !important;
-        padding: 15px;
-        border-radius: 8px;
-    }
-</style>
-"""
-st.markdown(custom_style, unsafe_allow_html=True)
-
-# Apply the Title and the Quote
+# --- UI ---
 st.markdown("<div class='glowing-title'>⚡ AI-Based EMF Risk Mapper</div>", unsafe_allow_html=True)
 st.markdown("<div class='quote-text'>\"Mapping the invisible currents that power our world to ensure a safer tomorrow.\"</div>", unsafe_allow_html=True)
-# THE MISSING LINES: Apply the Title and the Quote
 
 df = fetch_data()
-# --- 4. LOGIC ---
+
+# --- LOGIC ---
 if not df.empty:
-    # Show the raw data table for a second to verify it's working
+
     with st.expander("View Raw Data from Supabase"):
         st.write(df)
 
     latest = df.iloc[0]
     col1, col2, col3 = st.columns(3)
-    
-    # Risk Logic
+
     def get_risk_label(val):
         if val > 5.0: return "HIGH RISK", "inverse"
         if val > 2.0: return "MODERATE", "off"
         return "SAFE", "normal"
 
     label, color = get_risk_label(latest['intensity'])
-    
+
     col1.metric("Current Intensity", f"{latest['intensity']} µT", delta=label, delta_color=color)
     col2.metric("Distance from Line", f"{latest['distance']} m")
     col3.metric("Total Samples", len(df))
 
-    # AI Training (Requires at least 3 points to draw a curve)
     if len(df) >= 3:
         X = df[['distance']].values
         y = df['intensity'].values
-        
+
         poly = PolynomialFeatures(degree=2)
         X_poly = poly.fit_transform(X)
         model = LinearRegression().fit(X_poly, y)
@@ -121,7 +128,7 @@ if not df.empty:
         with tab1:
             dist_range = np.linspace(0.1, 10, 100).reshape(-1, 1)
             preds = model.predict(poly.transform(dist_range))
-            
+
             fig = go.Figure()
             fig.add_trace(go.Scatter(x=df['distance'], y=df['intensity'], mode='markers', name='Actual Data'))
             fig.add_trace(go.Scatter(x=dist_range.flatten(), y=preds, name='AI Prediction', line=dict(color='red')))
@@ -132,7 +139,7 @@ if not df.empty:
             y_grid = np.linspace(0, 2, 10)
             grid_intensities = model.predict(poly.transform(x_grid.reshape(-1, 1)))
             z_data = np.tile(grid_intensities, (len(y_grid), 1))
-            
+
             fig_heat = px.imshow(
                 z_data, x=x_grid, y=y_grid,
                 labels=dict(x="Distance (m)", y="Lateral", color="µT"),
