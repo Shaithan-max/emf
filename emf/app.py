@@ -90,7 +90,7 @@ def fetch_data():
         return pd.DataFrame()
 
 # --- UI ---
-st.markdown("<div class='glowing-title'>⚡ AI-Based EMF Risk Mapper</div>", unsafe_allow_html=True)
+st.markdown("<div class='glowing-title'> AI-Based EMF Risk Mapper</div>", unsafe_allow_html=True)
 st.markdown("<div class='quote-text'>\"Mapping the invisible currents that power our world to ensure a safer tomorrow.\"</div>", unsafe_allow_html=True)
 
 df = fetch_data()
