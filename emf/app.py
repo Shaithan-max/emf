@@ -33,13 +33,18 @@ def fetch_data():
 # --- 3. UI LAYOUT ---
 custom_style = """
 <style>
-    /* 1. Subtle Background Image with Dark Overlay */
-    .stApp {
-        background-image: linear-gradient(rgba(5, 11, 20, 0.85), rgba(5, 11, 20, 0.95)), 
-                          url('https://images.unsplash.com/photo-1605615809247-f0c3f0b2fcf0?q=80&w=1920') !important;
+     /* 1. Subtle Background Image with Dark Overlay */
+    [data-testid="stAppViewContainer"] {
+        background: linear-gradient(rgba(5, 11, 20, 0.85), rgba(5, 11, 20, 0.95)), 
+                    url("https://images.unsplash.com/photo-1605615809247-f0c3f0b2fcf0") !important;
         background-size: cover !important;
         background-position: center !important;
         background-attachment: fixed !important;
+    }
+    
+    /* Make the top bar transparent so it doesn't block the image */
+    [data-testid="stHeader"] {
+        background: transparent !important;
     }
 
     /* 2. Main Title Styling */
