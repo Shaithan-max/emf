@@ -17,7 +17,7 @@ custom_style = """
 /* BACKGROUND IMAGE */
 .stApp {
     background: linear-gradient(rgba(5, 11, 20, 0.85), rgba(5, 11, 20, 0.95)),
-                url("https://upload.wikimedia.org/wikipedia/commons/thumb/c/cd/High_voltage_power_lines.jpg/1920px-High_voltage_power_lines.jpg");
+                url("https://unsplash.com/s/photos/website-background");
     background-size: cover !important;
     background-position: center !important;
     background-attachment: fixed !important;
