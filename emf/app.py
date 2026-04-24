@@ -33,18 +33,19 @@ def fetch_data():
 # --- 3. UI LAYOUT ---
 custom_style = """
 <style>
-     /* 1. Subtle Background Image with Dark Overlay */
-    [data-testid="stAppViewContainer"] {
-        background: linear-gradient(rgba(5, 11, 20, 0.85), rgba(5, 11, 20, 0.95)), 
-                    url("https://images.unsplash.com/photo-1605615809247-f0c3f0b2fcf0") !important;
+    /* 1. NUCLEAR BACKGROUND FIX */
+    /* Put the image on the very bottom layer */
+    .stApp {
+        background-image: linear-gradient(rgba(5, 11, 20, 0.85), rgba(5, 11, 20, 0.95)), 
+                          url("https://upload.wikimedia.org/wikipedia/commons/thumb/c/cd/High_voltage_power_lines.jpg/1920px-High_voltage_power_lines.jpg") !important;
         background-size: cover !important;
         background-position: center !important;
         background-attachment: fixed !important;
     }
     
-    /* Make the top bar transparent so it doesn't block the image */
-    [data-testid="stHeader"] {
-        background: transparent !important;
+    /* Force the middle layers to be see-through so the image shows up! */
+    [data-testid="stAppViewContainer"], [data-testid="stHeader"] {
+        background-color: transparent !important;
     }
 
     /* 2. Main Title Styling */
@@ -57,7 +58,7 @@ custom_style = """
         margin-bottom: 5px;
     }
     
-    /* 3. Quote Styling (Readable and Decent) */
+    /* 3. Quote Styling */
     .quote-text {
         font-size: 16px;
         font-style: italic;
@@ -69,7 +70,7 @@ custom_style = """
     
     /* 4. Elegant Glass-like Data Boxes */
     [data-testid="stMetric"] {
-        background: rgba(11, 20, 38, 0.5) !important;
+        background-color: rgba(11, 20, 38, 0.5) !important;
         backdrop-filter: blur(4px);
         border: 1px solid rgba(0, 255, 170, 0.3) !important;
         padding: 15px;
@@ -79,11 +80,11 @@ custom_style = """
 """
 st.markdown(custom_style, unsafe_allow_html=True)
 
-# THE MISSING LINES: Apply the Title and the Quote
+# Apply the Title and the Quote
 st.markdown("<div class='glowing-title'>⚡ AI-Based EMF Risk Mapper</div>", unsafe_allow_html=True)
 st.markdown("<div class='quote-text'>\"Mapping the invisible currents that power our world to ensure a safer tomorrow.\"</div>", unsafe_allow_html=True)
+# THE MISSING LINES: Apply the Title and the Quote
 
-df = fetch_data()
 
 # --- 4. LOGIC ---
 if not df.empty:
