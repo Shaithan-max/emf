@@ -31,7 +31,30 @@ def fetch_data():
         return pd.DataFrame()
 
 # --- 3. UI LAYOUT ---
-st.title("AI-Based EMF Monitoring & Risk Mapping")
+custom_style = """
+<style>
+    /* Glowing Title */
+    .glowing-title {
+        font-size: 40px;
+        font-weight: 900;
+        color: #00FFAA;
+        text-align: center;
+        text-shadow: 0px 0px 15px rgba(0, 255, 170, 0.6);
+        margin-bottom: 30px;
+    }
+    
+    /* Styling the 3 Data Boxes */
+    div[data-testid="metric-container"] {
+        background-color: #0B1426;
+        border: 2px solid #00FFAA;
+        padding: 15px;
+        border-radius: 10px;
+        box-shadow: 0px 0px 15px rgba(0, 255, 170, 0.2);
+    }
+</style>
+"""
+st.markdown(custom_style, unsafe_allow_html=True)
+st.markdown("<div class='glowing-title'>⚡ AI-Based EMF Risk Mapper</div>", unsafe_allow_html=True)
 
 df = fetch_data()
 
