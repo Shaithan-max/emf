@@ -179,6 +179,30 @@ html, body { background: transparent !important; }
     border: 1px solid rgba(90,138,90,0.18) !important;
     overflow: hidden !important;
 }
+
+[data-testid="stToolbar"],
+[data-testid="stToolbarActions"] button,
+[data-testid="stToolbarActions"] svg,
+[data-testid="stDecoration"],
+header [data-testid="stToolbar"] svg path,
+.stDeployButton svg,
+button[kind="header"] svg {
+    color: #111111 !important;
+    fill: #111111 !important;
+    stroke: #111111 !important;
+}
+
+[data-testid="stHeader"] {
+    background: rgba(247,244,238,0.92) !important;
+    border-bottom: 1px solid rgba(90,138,90,0.15);
+}
+
+button[data-testid="baseButton-header"] svg,
+[data-testid="collapsedControl"] svg,
+[data-testid="collapsedControl"] {
+    color: #111111 !important;
+    fill: #111111 !important;
+}
 </style>
 """
 
@@ -540,11 +564,11 @@ if not df.empty:
             return ""
 
         if "risk_level" in df_filtered.columns:
-            st.dataframe(
-                df_filtered.style.applymap(color_risk, subset=["risk_level"]),
-                use_container_width=True,
-                height=360,
-            )
+            try:
+                styled = df_filtered.style.map(color_risk, subset=["risk_level"])
+            except AttributeError:
+                styled = df_filtered.style.applymap(color_risk, subset=["risk_level"])
+            st.dataframe(styled, use_container_width=True, height=360)
         else:
             st.dataframe(df_filtered, use_container_width=True, height=360)
 
