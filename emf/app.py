@@ -1,3 +1,4 @@
+python
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -213,12 +214,12 @@ PC = {
     "bg":      "rgba(0,0,0,0)",
     "paper":   "rgba(0,0,0,0)",
     "grid":    "rgba(90,138,90,0.13)",
-    "text":    "#2a4a2a",
-    "tick":    "#5a7a5a",
+    "text":    "#1e3d1e", # Upgraded to high-contrast deep forest green
+    "tick":    "#1e3d1e",
     "a1":      "#3a7a3a",
     "a2":      "#7aaa6a",
-    "legend":  "rgba(245,250,245,0.85)",
-    "leg_bdr": "rgba(90,138,90,0.25)",
+    "legend":  "rgba(255,255,252,0.92)",
+    "leg_bdr": "rgba(90,138,90,0.3)",
 }
 
 def style_fig(fig, is_map=False):
@@ -226,12 +227,27 @@ def style_fig(fig, is_map=False):
         font=dict(family="Inter", color=PC["text"]),
         plot_bgcolor=PC["bg"],
         paper_bgcolor=PC["paper"],
-        legend=dict(bgcolor=PC["legend"], bordercolor=PC["leg_bdr"], borderwidth=1),
-        margin=dict(l=20, r=20, t=30, b=20),
+        legend=dict(
+            bgcolor=PC["legend"], 
+            bordercolor=PC["leg_bdr"], 
+            borderwidth=1,
+            font=dict(color=PC["text"], size=11) # Clear text in legend
+        ),
+        margin=dict(l=50, r=50, t=50, b=50), # Balanced spacing
     )
     if not is_map:
-        updates["xaxis"] = dict(gridcolor=PC["grid"], linecolor="rgba(90,138,90,0.2)", tickfont=dict(color=PC["tick"]))
-        updates["yaxis"] = dict(gridcolor=PC["grid"], linecolor="rgba(90,138,90,0.2)", tickfont=dict(color=PC["tick"]))
+        updates["xaxis"] = dict(
+            gridcolor=PC["grid"], 
+            linecolor="rgba(90,138,90,0.2)", 
+            tickfont=dict(color=PC["tick"]),
+            title_font=dict(color=PC["text"], size=12)
+        )
+        updates["yaxis"] = dict(
+            gridcolor=PC["grid"], 
+            linecolor="rgba(90,138,90,0.2)", 
+            tickfont=dict(color=PC["tick"]),
+            title_font=dict(color=PC["text"], size=12)
+        )
     fig.update_layout(**updates)
     return fig
 
@@ -313,7 +329,7 @@ with st.sidebar:
     - Public limit: 100 uT
     """)
     st.markdown("---")
-    st.caption("EMF Risk Mapper v2.3 | Forest Edition")
+    st.caption("EMF Risk Mapper v2.4 | Forest Edition")
 
 
 # ===================== HEADER =====================
@@ -340,8 +356,6 @@ poly = None
 def generate_augmented_data(X_real, y_real, num_samples=150):
     """
     Generates synthetic data by augmenting real sensor data.
-    Adds tight noise bounds to prevent the dummy data from pulling 
-    the final curve away from the real readings.
     """
     np.random.seed(42)
     num_real = len(X_real)
@@ -352,7 +366,6 @@ def generate_augmented_data(X_real, y_real, num_samples=150):
     X_synth = X_real[indices]
     y_synth = y_real[indices]
     
-    # Low-variance noise (distance +/- 3%, intensity +/- 5%)
     X_synth_noise = X_synth * np.random.uniform(0.97, 1.03, size=X_synth.shape)
     y_synth_noise = y_synth * np.random.uniform(0.95, 1.05, size=y_synth.shape)
     
@@ -364,24 +377,22 @@ if not df.empty:
     df_filtered = df[df["risk_level"] == risk_filter] if risk_filter != "All" else df.copy()
 
     max_dist = float(df["distance"].max()) if not df.empty else 10.0
-    max_dist = max(max_dist, 0.5)
+    max_dist = max(max_dist, 0.5) # Allows zooming on centimeter scale
 
-    # --- DYNAMIC MEAN-BASED DATA AGGREGATION ---
+    # --- MEAN-BASED DATA AGGREGATION ---
     df_grouped = df.copy()
     
     if max_dist > 10.0:
-        # For large-scale datasets (0-100m), group by nearest 5 meters to smooth spatial steps
         df_grouped["distance_rounded"] = (df_grouped["distance"] / 5).round() * 5
     else:
-        # For close-range datasets (0-2m), group by nearest 10 centimeters (0.1m)
-        df_grouped["distance_rounded"] = df_grouped["distance"].round(1)
+        # Changed to 3 decimal places (1mm precision) to preserve the close-range curves
+        df_grouped["distance_rounded"] = df_grouped["distance"].round(3)
     
-    # Group by distance and calculate the mean intensity
+    # Calculate the mean intensity
     df_aggregated = df_grouped.groupby("distance_rounded")["intensity"].mean().reset_index()
     df_aggregated.rename(columns={"distance_rounded": "distance"}, inplace=True)
     # --------------------------------------------
 
-    # We use a weighted training approach so the model prioritizes real aggregated points
     if len(df_aggregated) >= 5:
         X_real = df_aggregated[["distance"]].values
         y_real = df_aggregated["intensity"].values
@@ -462,7 +473,8 @@ if not df.empty:
     # ---- TAB 1: PREDICTIVE CURVE ----
     with tab1:
         if model is not None:
-            dist_range = np.linspace(0.1, max_dist, 200).reshape(-1, 1)
+            # Fixed to start at 0.0 instead of 0.1 so the curve originates cleanly
+            dist_range = np.linspace(0.0, max_dist, 200).reshape(-1, 1)
             preds = model.predict(poly.transform(dist_range))
             y_max = float(max(df["intensity"].max(), max(preds))) + 10
 
@@ -474,15 +486,14 @@ if not df.empty:
             fig.add_hrect(y0=5, y1=y_max, fillcolor="rgba(201,74,74,0.08)", line_width=0,
                           annotation_text="High Risk Zone", annotation_position="right")
 
-            # --- PLOTTING MODIFICATION ---
-            # We now plot df_aggregated instead of df. This displays only the unique average dots.
+            # Displays your high-fidelity binned average measurements
             fig.add_trace(go.Scatter(
                 x=df_aggregated["distance"], y=df_aggregated["intensity"],
                 mode="markers", name="Average Sensor Readings",
                 marker=dict(color=PC["a1"], size=10, line=dict(color="white", width=1.5)),
             ))
             
-            # AI Fitted Prediction Curve (Based on grouped average values)
+            # AI Fitted Prediction Curve (Starts cleanly at 0.0)
             fig.add_trace(go.Scatter(
                 x=dist_range.flatten(), y=preds,
                 name="AI Weighted Fit Curve",
