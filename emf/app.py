@@ -223,6 +223,20 @@ button[kind="header"] svg {
     background: rgba(247,244,238,0.92) !important;
     border-bottom: 1px solid rgba(90,138,90,0.15);
 }
+
+/* Force header >> arrow and all header icon buttons to dark forest green */
+[data-testid="stHeader"] button svg,
+[data-testid="stHeader"] button svg *,
+[data-testid="stHeader"] button svg path,
+[data-testid="stHeader"] button svg polyline,
+[data-testid="stHeader"] button svg line,
+[data-testid="stHeader"] [data-testid="collapsedControl"] svg *,
+[data-testid="stHeader"] [data-testid="collapsedControl"] svg path,
+[data-testid="stHeader"] [data-testid="collapsedControl"] svg polyline {
+    color: #2e5c2e !important;
+    fill: #2e5c2e !important;
+    stroke: #2e5c2e !important;
+}
 </style>
 """
 
