@@ -313,7 +313,7 @@ with st.sidebar:
     - Public limit: 100 uT
     """)
     st.markdown("---")
-    st.caption("EMF Risk Mapper v2.0 | Forest Edition")
+    st.caption("EMF Risk Mapper v2.1 | Forest Edition")
 
 
 # ===================== HEADER =====================
@@ -331,85 +331,87 @@ with col_btn:
         st.rerun()
 
 
-# ===================== DATA =====================
+# ===================== DATA & MODELING =====================
 df = fetch_data()
 
 model = None
 poly = None
 
-def generate_synthetic_data(distances, real_df=None, noise_level=5.0):
+def generate_augmented_data(X_real, y_real, num_samples=150):
     """
-    Generates synthetic EMF intensity based on a physical model,
-    calibrated to the scale and decay of the real dataset.
+    Generates synthetic data by augmenting real sensor data.
+    Adds tight noise bounds to prevent the dummy data from pulling 
+    the final curve away from the real readings.
     """
     np.random.seed(42)
-    if real_df is not None and not real_df.empty:
-        # Real sensors decay slowly, let's assume intensity = C / sqrt(distance)
-        # We calibrate C from the real data: C = mean(intensity * sqrt(distance))
-        decay_power = 0.5
-        C = np.mean(real_df["intensity"] * (real_df["distance"] ** decay_power))
-        # Keep C in a reasonable bounding box based on real data
-        C = np.clip(C, 10.0, 2000.0)
-    else:
-        C = 100.0
-        decay_power = 0.5
+    num_real = len(X_real)
+    if num_real == 0:
+        return X_real, y_real
         
-    dist_clipped = np.maximum(distances, 0.1)
-    synthetic_intensity = C / (dist_clipped ** decay_power)
+    indices = np.random.choice(num_real, size=num_samples, replace=True)
+    X_synth = X_real[indices]
+    y_synth = y_real[indices]
     
-    # Add random noise
-    noise = np.random.normal(0, noise_level, size=synthetic_intensity.shape)
-    return np.clip(synthetic_intensity + noise, 1.0, None)
+    # Low-variance noise (distance +/- 3%, intensity +/- 5%)
+    X_synth_noise = X_synth * np.random.uniform(0.97, 1.03, size=X_synth.shape)
+    y_synth_noise = y_synth * np.random.uniform(0.95, 1.05, size=y_synth.shape)
+    
+    return X_synth_noise, y_synth_noise
 
 
 if not df.empty:
     df["risk_level"] = df["intensity"].apply(lambda x: get_risk(x)[0])
     df_filtered = df[df["risk_level"] == risk_filter] if risk_filter != "All" else df.copy()
 
-    # Calculate the dynamic maximum distance from the real data (min 10 meters)
     max_dist = float(df["distance"].max()) if not df.empty else 10.0
     max_dist = max(max_dist, 10.0)
 
-    # Build model using a split of synthetic and real data
+    # We use a weighted training approach so the model prioritizes real points
     if len(df) >= 5:
-        # 1. Real sensor data
         X_real = df[["distance"]].values
         y_real = df["intensity"].values
 
-        # 2. Split real sensor data (80% train, 20% validation)
-        X_real_train, X_real_val, y_real_train, y_real_val = train_test_split(
+        # Split 80% train / 20% test on real sensor data
+        X_train, X_val, y_train, y_val = train_test_split(
             X_real, y_real, test_size=0.2, random_state=42
         )
 
-        # 3. Generate synthetic data over the dynamic range [0.1, max_dist]
-        # We generate 200 synthetic points to give the model a strong physical prior
-        X_synth = np.random.uniform(0.1, max_dist, (200, 1))
-        y_synth = generate_synthetic_data(X_synth, real_df=df).flatten()
+        # Generate smooth synthetic data points based on training split
+        X_synth, y_synth = generate_augmented_data(X_train, y_train, num_samples=120)
 
-        # 4. Combine real training data and synthetic data
-        X_train_mixed = np.vstack([X_real_train, X_synth])
-        y_train_mixed = np.concatenate([y_real_train, y_synth])
+        # Combine real training data and synthetic data
+        X_train_mixed = np.vstack([X_train, X_synth])
+        y_train_mixed = np.concatenate([y_train, y_synth.flatten()])
 
-        # 5. Fit Polynomial Features & Train the model
-        poly = PolynomialFeatures(degree=2)
+        # Define Sample Weights: Real training points are heavily weighted (12x)
+        # while synthetic points are weighted (1x) to keep the curve stable at limits.
+        sample_weights = np.ones(len(X_train_mixed))
+        sample_weights[:len(X_train)] = 12.0
+
+        # Fit Polynomial features
+        poly = PolynomialFeatures(degree=3)
         X_train_poly = poly.fit_transform(X_train_mixed)
-        model = LinearRegression().fit(X_train_poly, y_train_mixed)
+        
+        # Train model with sample weighting
+        model = LinearRegression().fit(X_train_poly, y_train_mixed, sample_weight=sample_weights)
 
-        # 6. Evaluate model on validation set (real only)
-        X_val_poly = poly.transform(X_real_val)
-        r2_val = model.score(X_val_poly, y_real_val)
-        st.sidebar.success(f"AI Model Trained!\nVal R² (Real Sensor): {r2_val:.3f}")
+        # Test/Evaluate performance strictly on the real validation set
+        X_val_poly = poly.transform(X_val)
+        r2_val = model.score(X_val_poly, y_val)
+        st.session_state["r2_val"] = r2_val
+        st.sidebar.success(f"AI Model Trained!\nVal R² (Real Data): {r2_val:.3f}")
+        
     elif len(df) >= 3:
-        # Fallback if too few real points to split
+        # Fallback for small initial datasets
         X = df[["distance"]].values
         y = df["intensity"].values
         poly = PolynomialFeatures(degree=2)
         X_poly = poly.fit_transform(X)
         model = LinearRegression().fit(X_poly, y)
-        st.sidebar.info("Trained on all real data (too few points to split).")
+        st.sidebar.info("Model trained on available data points.")
 
 
-# ===================== MAIN =====================
+# ===================== MAIN UI =====================
 if not df.empty:
 
     latest = df.iloc[0]
@@ -458,14 +460,17 @@ if not df.empty:
             fig.add_hrect(y0=5, y1=y_max, fillcolor="rgba(201,74,74,0.08)", line_width=0,
                           annotation_text="High Risk Zone", annotation_position="right")
 
+            # Real Data Points
             fig.add_trace(go.Scatter(
                 x=df["distance"], y=df["intensity"],
-                mode="markers", name="Recorded Readings",
+                mode="markers", name="Real Sensor Readings",
                 marker=dict(color=PC["a1"], size=10, line=dict(color="white", width=1.5)),
             ))
+            
+            # AI Fitted Prediction Curve
             fig.add_trace(go.Scatter(
                 x=dist_range.flatten(), y=preds,
-                name="AI Prediction",
+                name="AI Weighted Fit Curve",
                 line=dict(color=PC["a2"], width=2.5),
             ))
             fig.update_layout(
@@ -475,8 +480,21 @@ if not df.empty:
             )
             style_fig(fig)
             st.plotly_chart(fig, use_container_width=True)
+            
+            # Real-world performance metric box (R² Score)
+            r2_to_show = st.session_state.get("r2_val", None)
+            if r2_to_show is not None:
+                st.markdown(f"""
+                <div style="background-color: rgba(90,138,90,0.08); border-left: 4px solid #2e5c2e; padding: 12px; border-radius: 8px; margin-top: 15px;">
+                    <p style="margin: 0; font-family: 'Inter', sans-serif; font-size: 14px; color: #1e3d1e;">
+                        <strong>AI Model Accuracy (R² Score) on Real Data:</strong> 
+                        <span style="font-weight:700; color:#2e5c2e;">{r2_to_show:.4f}</span> &nbsp;|&nbsp; 
+                        <em>This metric evaluates how accurately our prediction model matches your physical sensor data. A score closer to 1.00 indicates high fidelity.</em>
+                    </p>
+                </div>
+                """, unsafe_allow_html=True)
         else:
-            st.info("Need at least 3 readings to generate the AI prediction curve.")
+            st.info("Additional data is required to calculate the mathematical prediction curve.")
 
     # ---- TAB 2: HEATMAP ----
     with tab2:
@@ -514,7 +532,7 @@ if not df.empty:
             )
             st.plotly_chart(fig_heat, use_container_width=True)
         else:
-            st.info("Need at least 3 readings to render the heatmap.")
+            st.info("Additional data points are needed to render the 2D exposure map.")
 
     # ---- TAB 3: RISK ZONE MAP ----
     with tab3:
