@@ -504,7 +504,7 @@ if not df.empty:
             fig.add_annotation(
                 x=0.01, xref="paper",
                 y=1,    yref="y",
-                text="✅ Safe Zone",
+                text=" Safe Zone",
                 showarrow=False, xanchor="left",
                 font=dict(color="#2e7d4f", size=11, family="Inter"),
                 bgcolor="rgba(255,255,255,0.6)", borderpad=3,
@@ -512,7 +512,7 @@ if not df.empty:
             fig.add_annotation(
                 x=0.01, xref="paper",
                 y=3.5,  yref="y",
-                text="⚠️ Moderate Zone",
+                text="Moderate Zone",
                 showarrow=False, xanchor="left",
                 font=dict(color="#b8881a", size=11, family="Inter"),
                 bgcolor="rgba(255,255,255,0.6)", borderpad=3,
@@ -520,7 +520,7 @@ if not df.empty:
             fig.add_annotation(
                 x=0.01, xref="paper",
                 y=y_max - (y_max - 5) * 0.25, yref="y",
-                text="🔴 High Risk Zone",
+                text="!! High Risk Zone",
                 showarrow=False, xanchor="left",
                 font=dict(color="#c94a4a", size=11, family="Inter"),
                 bgcolor="rgba(255,255,255,0.6)", borderpad=3,
