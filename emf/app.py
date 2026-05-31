@@ -6,6 +6,7 @@ import plotly.graph_objects as go
 from supabase import create_client
 from sklearn.linear_model import LinearRegression
 from sklearn.preprocessing import PolynomialFeatures
+from sklearn.model_selection import train_test_split
 
 st.set_page_config(page_title="EMF Risk Mapper", layout="wide")
 
@@ -336,17 +337,76 @@ df = fetch_data()
 model = None
 poly = None
 
+def generate_synthetic_data(distances, real_df=None, noise_level=5.0):
+    """
+    Generates synthetic EMF intensity based on a physical model,
+    calibrated to the scale and decay of the real dataset.
+    """
+    np.random.seed(42)
+    if real_df is not None and not real_df.empty:
+        # Real sensors decay slowly, let's assume intensity = C / sqrt(distance)
+        # We calibrate C from the real data: C = mean(intensity * sqrt(distance))
+        decay_power = 0.5
+        C = np.mean(real_df["intensity"] * (real_df["distance"] ** decay_power))
+        # Keep C in a reasonable bounding box based on real data
+        C = np.clip(C, 10.0, 2000.0)
+    else:
+        C = 100.0
+        decay_power = 0.5
+        
+    dist_clipped = np.maximum(distances, 0.1)
+    synthetic_intensity = C / (dist_clipped ** decay_power)
+    
+    # Add random noise
+    noise = np.random.normal(0, noise_level, size=synthetic_intensity.shape)
+    return np.clip(synthetic_intensity + noise, 1.0, None)
+
+
 if not df.empty:
     df["risk_level"] = df["intensity"].apply(lambda x: get_risk(x)[0])
     df_filtered = df[df["risk_level"] == risk_filter] if risk_filter != "All" else df.copy()
 
-    # Build model once if enough data
-    if len(df) >= 3:
+    # Calculate the dynamic maximum distance from the real data (min 10 meters)
+    max_dist = float(df["distance"].max()) if not df.empty else 10.0
+    max_dist = max(max_dist, 10.0)
+
+    # Build model using a split of synthetic and real data
+    if len(df) >= 5:
+        # 1. Real sensor data
+        X_real = df[["distance"]].values
+        y_real = df["intensity"].values
+
+        # 2. Split real sensor data (80% train, 20% validation)
+        X_real_train, X_real_val, y_real_train, y_real_val = train_test_split(
+            X_real, y_real, test_size=0.2, random_state=42
+        )
+
+        # 3. Generate synthetic data over the dynamic range [0.1, max_dist]
+        # We generate 200 synthetic points to give the model a strong physical prior
+        X_synth = np.random.uniform(0.1, max_dist, (200, 1))
+        y_synth = generate_synthetic_data(X_synth, real_df=df).flatten()
+
+        # 4. Combine real training data and synthetic data
+        X_train_mixed = np.vstack([X_real_train, X_synth])
+        y_train_mixed = np.concatenate([y_real_train, y_synth])
+
+        # 5. Fit Polynomial Features & Train the model
+        poly = PolynomialFeatures(degree=2)
+        X_train_poly = poly.fit_transform(X_train_mixed)
+        model = LinearRegression().fit(X_train_poly, y_train_mixed)
+
+        # 6. Evaluate model on validation set (real only)
+        X_val_poly = poly.transform(X_real_val)
+        r2_val = model.score(X_val_poly, y_real_val)
+        st.sidebar.success(f"AI Model Trained!\nVal R² (Real Sensor): {r2_val:.3f}")
+    elif len(df) >= 3:
+        # Fallback if too few real points to split
         X = df[["distance"]].values
         y = df["intensity"].values
         poly = PolynomialFeatures(degree=2)
         X_poly = poly.fit_transform(X)
         model = LinearRegression().fit(X_poly, y)
+        st.sidebar.info("Trained on all real data (too few points to split).")
 
 
 # ===================== MAIN =====================
@@ -386,9 +446,9 @@ if not df.empty:
     # ---- TAB 1: PREDICTIVE CURVE ----
     with tab1:
         if model is not None:
-            dist_range = np.linspace(0.1, 10, 200).reshape(-1, 1)
+            dist_range = np.linspace(0.1, max_dist, 200).reshape(-1, 1)
             preds = model.predict(poly.transform(dist_range))
-            y_max = float(max(max(preds), 6)) + 1
+            y_max = float(max(df["intensity"].max(), max(preds))) + 10
 
             fig = go.Figure()
             fig.add_hrect(y0=0, y1=2, fillcolor="rgba(46,125,79,0.08)", line_width=0,
@@ -421,7 +481,7 @@ if not df.empty:
     # ---- TAB 2: HEATMAP ----
     with tab2:
         if model is not None:
-            x_grid = np.linspace(0.1, 5, 60)
+            x_grid = np.linspace(0.1, max_dist, 60)
             y_grid = np.linspace(0, 2, 15)
             grid_int = model.predict(poly.transform(x_grid.reshape(-1, 1)))
             z_data = np.tile(grid_int, (len(y_grid), 1))
