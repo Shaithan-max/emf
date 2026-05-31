@@ -313,7 +313,7 @@ with st.sidebar:
     - Public limit: 100 uT
     """)
     st.markdown("---")
-    st.caption("EMF Risk Mapper v2.1 | Forest Edition")
+    st.caption("EMF Risk Mapper v2.2 | Forest Edition")
 
 
 # ===================== HEADER =====================
@@ -366,12 +366,22 @@ if not df.empty:
     max_dist = float(df["distance"].max()) if not df.empty else 10.0
     max_dist = max(max_dist, 10.0)
 
-    # We use a weighted training approach so the model prioritizes real points
-    if len(df) >= 5:
-        X_real = df[["distance"]].values
-        y_real = df["intensity"].values
+    # --- NEW: MEAN-BASED DATA AGGREGATION ---
+    # We round distances to 1 decimal place (10 cm precision) to group duplicates
+    df_grouped = df.copy()
+    df_grouped["distance_rounded"] = df_grouped["distance"].round(1)
+    
+    # Group by distance and calculate the mean intensity
+    df_aggregated = df_grouped.groupby("distance_rounded")["intensity"].mean().reset_index()
+    df_aggregated.rename(columns={"distance_rounded": "distance"}, inplace=True)
+    # ----------------------------------------
 
-        # Split 80% train / 20% test on real sensor data
+    # We use a weighted training approach on the aggregated data
+    if len(df_aggregated) >= 5:
+        X_real = df_aggregated[["distance"]].values
+        y_real = df_aggregated["intensity"].values
+
+        # Split 80% train / 20% test on real aggregated data
         X_train, X_val, y_train, y_val = train_test_split(
             X_real, y_real, test_size=0.2, random_state=42
         )
@@ -399,16 +409,16 @@ if not df.empty:
         X_val_poly = poly.transform(X_val)
         r2_val = model.score(X_val_poly, y_val)
         st.session_state["r2_val"] = r2_val
-        st.sidebar.success(f"AI Model Trained!\nVal R² (Real Data): {r2_val:.3f}")
+        st.sidebar.success(f"AI Model Trained!\nVal R² (Aggregated): {r2_val:.3f}")
         
-    elif len(df) >= 3:
+    elif len(df_aggregated) >= 3:
         # Fallback for small initial datasets
-        X = df[["distance"]].values
-        y = df["intensity"].values
+        X = df_aggregated[["distance"]].values
+        y = df_aggregated["intensity"].values
         poly = PolynomialFeatures(degree=2)
         X_poly = poly.fit_transform(X)
         model = LinearRegression().fit(X_poly, y)
-        st.sidebar.info("Model trained on available data points.")
+        st.sidebar.info("Model trained on available aggregated data points.")
 
 
 # ===================== MAIN UI =====================
@@ -460,14 +470,14 @@ if not df.empty:
             fig.add_hrect(y0=5, y1=y_max, fillcolor="rgba(201,74,74,0.08)", line_width=0,
                           annotation_text="High Risk Zone", annotation_position="right")
 
-            # Real Data Points
+            # Real Data Points (We display your original unaggregated dataset here)
             fig.add_trace(go.Scatter(
                 x=df["distance"], y=df["intensity"],
                 mode="markers", name="Real Sensor Readings",
                 marker=dict(color=PC["a1"], size=10, line=dict(color="white", width=1.5)),
             ))
             
-            # AI Fitted Prediction Curve
+            # AI Fitted Prediction Curve (Based on grouped average values)
             fig.add_trace(go.Scatter(
                 x=dist_range.flatten(), y=preds,
                 name="AI Weighted Fit Curve",
@@ -487,7 +497,7 @@ if not df.empty:
                 st.markdown(f"""
                 <div style="background-color: rgba(90,138,90,0.08); border-left: 4px solid #2e5c2e; padding: 12px; border-radius: 8px; margin-top: 15px;">
                     <p style="margin: 0; font-family: 'Inter', sans-serif; font-size: 14px; color: #1e3d1e;">
-                        <strong>AI Model Accuracy (R² Score) on Real Data:</strong> 
+                        <strong>AI Model Accuracy (R² Score) on Aggregated Data:</strong> 
                         <span style="font-weight:700; color:#2e5c2e;">{r2_to_show:.4f}</span> &nbsp;|&nbsp; 
                         <em>This metric evaluates how accurately our prediction model matches your physical sensor data. A score closer to 1.00 indicates high fidelity.</em>
                     </p>
