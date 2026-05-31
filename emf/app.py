@@ -1,4 +1,3 @@
-
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -214,7 +213,7 @@ PC = {
     "bg":      "rgba(0,0,0,0)",
     "paper":   "rgba(0,0,0,0)",
     "grid":    "rgba(90,138,90,0.13)",
-    "text":    "#1e3d1e", # Upgraded to high-contrast deep forest green
+    "text":    "#1e3d1e",
     "tick":    "#1e3d1e",
     "a1":      "#3a7a3a",
     "a2":      "#7aaa6a",
@@ -231,9 +230,9 @@ def style_fig(fig, is_map=False):
             bgcolor=PC["legend"], 
             bordercolor=PC["leg_bdr"], 
             borderwidth=1,
-            font=dict(color=PC["text"], size=11) # Clear text in legend
+            font=dict(color=PC["text"], size=11)
         ),
-        margin=dict(l=50, r=50, t=50, b=50), # Balanced spacing
+        margin=dict(l=50, r=50, t=50, b=50),
     )
     if not is_map:
         updates["xaxis"] = dict(
@@ -329,7 +328,7 @@ with st.sidebar:
     - Public limit: 100 uT
     """)
     st.markdown("---")
-    st.caption("EMF Risk Mapper v2.4 | Forest Edition")
+    st.caption("EMF Risk Mapper v2.5 | Forest Edition")
 
 
 # ===================== HEADER =====================
@@ -377,7 +376,7 @@ if not df.empty:
     df_filtered = df[df["risk_level"] == risk_filter] if risk_filter != "All" else df.copy()
 
     max_dist = float(df["distance"].max()) if not df.empty else 10.0
-    max_dist = max(max_dist, 0.5) # Allows zooming on centimeter scale
+    max_dist = max(max_dist, 0.5) 
 
     # --- MEAN-BASED DATA AGGREGATION ---
     df_grouped = df.copy()
@@ -385,7 +384,6 @@ if not df.empty:
     if max_dist > 10.0:
         df_grouped["distance_rounded"] = (df_grouped["distance"] / 5).round() * 5
     else:
-        # Changed to 3 decimal places (1mm precision) to preserve the close-range curves
         df_grouped["distance_rounded"] = df_grouped["distance"].round(3)
     
     # Calculate the mean intensity
@@ -473,9 +471,17 @@ if not df.empty:
     # ---- TAB 1: PREDICTIVE CURVE ----
     with tab1:
         if model is not None:
-            # Fixed to start at 0.0 instead of 0.1 so the curve originates cleanly
-            dist_range = np.linspace(0.0, max_dist, 200).reshape(-1, 1)
+            # We strictly cap the prediction range to your maximum data point
+            # to prevent extrapolation "cliffs" in empty space.
+            actual_max_dist = float(df["distance"].max()) if not df.empty else max_dist
+            dist_range = np.linspace(0.0, actual_max_dist, 200).reshape(-1, 1)
+            
             preds = model.predict(poly.transform(dist_range))
+            
+            # PHYSICAL CONSTRAINT: EMF intensity cannot logically be negative.
+            # We clip predictions at 0 to guarantee mathematical safety.
+            preds = np.clip(preds, 0, None)
+            
             y_max = float(max(df["intensity"].max(), max(preds))) + 10
 
             fig = go.Figure()
@@ -493,7 +499,7 @@ if not df.empty:
                 marker=dict(color=PC["a1"], size=10, line=dict(color="white", width=1.5)),
             ))
             
-            # AI Fitted Prediction Curve (Starts cleanly at 0.0)
+            # AI Fitted Prediction Curve (Constrained to actual max distance and >= 0)
             fig.add_trace(go.Scatter(
                 x=dist_range.flatten(), y=preds,
                 name="AI Weighted Fit Curve",
@@ -525,9 +531,14 @@ if not df.empty:
     # ---- TAB 2: HEATMAP ----
     with tab2:
         if model is not None:
-            x_grid = np.linspace(0.1, max_dist, 60)
+            actual_max_dist = float(df["distance"].max()) if not df.empty else max_dist
+            x_grid = np.linspace(0.01, actual_max_dist, 60)
             y_grid = np.linspace(0, 2, 15)
             grid_int = model.predict(poly.transform(x_grid.reshape(-1, 1)))
+            
+            # PHYSICAL CONSTRAINT: Clip heatmap prediction values at 0 as well
+            grid_int = np.clip(grid_int, 0, None)
+            
             z_data = np.tile(grid_int, (len(y_grid), 1))
 
             fig_heat = px.imshow(
