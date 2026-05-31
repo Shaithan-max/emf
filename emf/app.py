@@ -34,6 +34,18 @@ html, body { background: transparent !important; }
 }
 [data-testid="stSidebar"] * { color: #d4e8d4 !important; }
 
+/* FIX 1: Sidebar collapse/expand arrow → forest green */
+[data-testid="collapsedControl"],
+[data-testid="collapsedControl"] svg,
+[data-testid="collapsedControl"] button,
+[data-testid="stSidebarCollapseButton"],
+[data-testid="stSidebarCollapseButton"] svg,
+button[data-testid="baseButton-header"] svg {
+    color: #2e5c2e !important;
+    fill: #2e5c2e !important;
+    stroke: #2e5c2e !important;
+}
+
 .hero-title {
     font-family: 'Playfair Display', serif;
     font-size: 50px;
@@ -197,13 +209,6 @@ button[kind="header"] svg {
     background: rgba(247,244,238,0.92) !important;
     border-bottom: 1px solid rgba(90,138,90,0.15);
 }
-
-button[data-testid="baseButton-header"] svg,
-[data-testid="collapsedControl"] svg,
-[data-testid="collapsedControl"] {
-    color: #111111 !important;
-    fill: #111111 !important;
-}
 </style>
 """
 
@@ -227,8 +232,8 @@ def style_fig(fig, is_map=False):
         plot_bgcolor=PC["bg"],
         paper_bgcolor=PC["paper"],
         legend=dict(
-            bgcolor=PC["legend"], 
-            bordercolor=PC["leg_bdr"], 
+            bgcolor=PC["legend"],
+            bordercolor=PC["leg_bdr"],
             borderwidth=1,
             font=dict(color=PC["text"], size=11)
         ),
@@ -236,14 +241,14 @@ def style_fig(fig, is_map=False):
     )
     if not is_map:
         updates["xaxis"] = dict(
-            gridcolor=PC["grid"], 
-            linecolor="rgba(90,138,90,0.2)", 
+            gridcolor=PC["grid"],
+            linecolor="rgba(90,138,90,0.2)",
             tickfont=dict(color=PC["tick"]),
             title_font=dict(color=PC["text"], size=12)
         )
         updates["yaxis"] = dict(
-            gridcolor=PC["grid"], 
-            linecolor="rgba(90,138,90,0.2)", 
+            gridcolor=PC["grid"],
+            linecolor="rgba(90,138,90,0.2)",
             tickfont=dict(color=PC["tick"]),
             title_font=dict(color=PC["text"], size=12)
         )
@@ -353,21 +358,15 @@ model = None
 poly = None
 
 def generate_augmented_data(X_real, y_real, num_samples=150):
-    """
-    Generates synthetic data by augmenting real sensor data.
-    """
     np.random.seed(42)
     num_real = len(X_real)
     if num_real == 0:
         return X_real, y_real
-        
     indices = np.random.choice(num_real, size=num_samples, replace=True)
     X_synth = X_real[indices]
     y_synth = y_real[indices]
-    
     X_synth_noise = X_synth * np.random.uniform(0.97, 1.03, size=X_synth.shape)
     y_synth_noise = y_synth * np.random.uniform(0.95, 1.05, size=y_synth.shape)
-    
     return X_synth_noise, y_synth_noise
 
 
@@ -376,56 +375,43 @@ if not df.empty:
     df_filtered = df[df["risk_level"] == risk_filter] if risk_filter != "All" else df.copy()
 
     max_dist = float(df["distance"].max()) if not df.empty else 10.0
-    max_dist = max(max_dist, 0.5) 
+    max_dist = max(max_dist, 0.5)
 
-    # --- MEAN-BASED DATA AGGREGATION ---
     df_grouped = df.copy()
-    
     if max_dist > 10.0:
         df_grouped["distance_rounded"] = (df_grouped["distance"] / 5).round() * 5
     else:
         df_grouped["distance_rounded"] = df_grouped["distance"].round(3)
-    
-    # Calculate the mean intensity
+
     df_aggregated = df_grouped.groupby("distance_rounded")["intensity"].mean().reset_index()
     df_aggregated.rename(columns={"distance_rounded": "distance"}, inplace=True)
-    # --------------------------------------------
 
     if len(df_aggregated) >= 5:
         X_real = df_aggregated[["distance"]].values
         y_real = df_aggregated["intensity"].values
 
-        # Split 80% train / 20% test on real sensor data
         X_train, X_val, y_train, y_val = train_test_split(
             X_real, y_real, test_size=0.2, random_state=42
         )
 
-        # Generate smooth synthetic data points based on training split
         X_synth, y_synth = generate_augmented_data(X_train, y_train, num_samples=120)
 
-        # Combine real training data and synthetic data
         X_train_mixed = np.vstack([X_train, X_synth])
         y_train_mixed = np.concatenate([y_train, y_synth.flatten()])
 
-        # Define Sample Weights: Real training points are heavily weighted (12x)
         sample_weights = np.ones(len(X_train_mixed))
         sample_weights[:len(X_train)] = 12.0
 
-        # Fit Polynomial features
         poly = PolynomialFeatures(degree=3)
         X_train_poly = poly.fit_transform(X_train_mixed)
-        
-        # Train model with sample weighting
         model = LinearRegression().fit(X_train_poly, y_train_mixed, sample_weight=sample_weights)
 
-        # Test/Evaluate performance strictly on the real validation set
         X_val_poly = poly.transform(X_val)
         r2_val = model.score(X_val_poly, y_val)
         st.session_state["r2_val"] = r2_val
         st.sidebar.success(f"AI Model Trained!\nVal R² (Aggregated): {r2_val:.3f}")
-        
+
     elif len(df_aggregated) >= 3:
-        # Fallback for small initial datasets
         X = df_aggregated[["distance"]].values
         y = df_aggregated["intensity"].values
         poly = PolynomialFeatures(degree=2)
@@ -471,40 +457,61 @@ if not df.empty:
     # ---- TAB 1: PREDICTIVE CURVE ----
     with tab1:
         if model is not None:
-            # We strictly cap the prediction range to your maximum data point
-            # to prevent extrapolation "cliffs" in empty space.
             actual_max_dist = float(df["distance"].max()) if not df.empty else max_dist
             dist_range = np.linspace(0.0, actual_max_dist, 200).reshape(-1, 1)
-            
+
             preds = model.predict(poly.transform(dist_range))
-            
-            # PHYSICAL CONSTRAINT: EMF intensity cannot logically be negative.
-            # We clip predictions at 0 to guarantee mathematical safety.
             preds = np.clip(preds, 0, None)
-            
+
             y_max = float(max(df["intensity"].max(), max(preds))) + 10
 
             fig = go.Figure()
-            fig.add_hrect(y0=0, y1=2, fillcolor="rgba(46,125,79,0.08)", line_width=0,
-                          annotation_text="Safe Zone", annotation_position="right")
-            fig.add_hrect(y0=2, y1=5, fillcolor="rgba(184,136,26,0.08)", line_width=0,
-                          annotation_text="Moderate Zone", annotation_position="right")
-            fig.add_hrect(y0=5, y1=y_max, fillcolor="rgba(201,74,74,0.08)", line_width=0,
-                          annotation_text="High Risk Zone", annotation_position="right")
 
-            # Displays your high-fidelity binned average measurements
+            # FIX 2: Zone fills — removed annotation_position to avoid right-side overlap
+            fig.add_hrect(y0=0,   y1=2,     fillcolor="rgba(46,125,79,0.13)",  line_width=0)
+            fig.add_hrect(y0=2,   y1=5,     fillcolor="rgba(184,136,26,0.13)", line_width=0)
+            fig.add_hrect(y0=5,   y1=y_max, fillcolor="rgba(201,74,74,0.13)",  line_width=0)
+
+            # FIX 2 cont.: Annotations pinned left, vertically centred in each band, colour-coded
+            fig.add_annotation(
+                x=0.01, xref="paper",
+                y=1,    yref="y",
+                text="✅ Safe Zone",
+                showarrow=False, xanchor="left",
+                font=dict(color="#2e7d4f", size=11, family="Inter"),
+                bgcolor="rgba(255,255,255,0.6)", borderpad=3,
+            )
+            fig.add_annotation(
+                x=0.01, xref="paper",
+                y=3.5,  yref="y",
+                text="⚠️ Moderate Zone",
+                showarrow=False, xanchor="left",
+                font=dict(color="#b8881a", size=11, family="Inter"),
+                bgcolor="rgba(255,255,255,0.6)", borderpad=3,
+            )
+            fig.add_annotation(
+                x=0.01, xref="paper",
+                y=y_max - (y_max - 5) * 0.25, yref="y",
+                text="🔴 High Risk Zone",
+                showarrow=False, xanchor="left",
+                font=dict(color="#c94a4a", size=11, family="Inter"),
+                bgcolor="rgba(255,255,255,0.6)", borderpad=3,
+            )
+
+            # Average sensor readings scatter
             fig.add_trace(go.Scatter(
                 x=df_aggregated["distance"], y=df_aggregated["intensity"],
                 mode="markers", name="Average Sensor Readings",
                 marker=dict(color=PC["a1"], size=10, line=dict(color="white", width=1.5)),
             ))
-            
-            # AI Fitted Prediction Curve (Constrained to actual max distance and >= 0)
+
+            # AI fit curve
             fig.add_trace(go.Scatter(
                 x=dist_range.flatten(), y=preds,
                 name="AI Weighted Fit Curve",
                 line=dict(color=PC["a2"], width=2.5),
             ))
+
             fig.update_layout(
                 xaxis_title="Distance from Source (m)",
                 yaxis_title="EMF Intensity (uT)",
@@ -512,15 +519,14 @@ if not df.empty:
             )
             style_fig(fig)
             st.plotly_chart(fig, use_container_width=True)
-            
-            # Real-world performance metric box (R² Score)
+
             r2_to_show = st.session_state.get("r2_val", None)
             if r2_to_show is not None:
                 st.markdown(f"""
                 <div style="background-color: rgba(90,138,90,0.08); border-left: 4px solid #2e5c2e; padding: 12px; border-radius: 8px; margin-top: 15px;">
                     <p style="margin: 0; font-family: 'Inter', sans-serif; font-size: 14px; color: #1e3d1e;">
-                        <strong>AI Model Accuracy (R² Score) on Aggregated Data:</strong> 
-                        <span style="font-weight:700; color:#2e5c2e;">{r2_to_show:.4f}</span> &nbsp;|&nbsp; 
+                        <strong>AI Model Accuracy (R² Score) on Aggregated Data:</strong>
+                        <span style="font-weight:700; color:#2e5c2e;">{r2_to_show:.4f}</span> &nbsp;|&nbsp;
                         <em>This metric evaluates how accurately our prediction model matches your physical sensor data. A score closer to 1.00 indicates high fidelity.</em>
                     </p>
                 </div>
@@ -535,10 +541,7 @@ if not df.empty:
             x_grid = np.linspace(0.01, actual_max_dist, 60)
             y_grid = np.linspace(0, 2, 15)
             grid_int = model.predict(poly.transform(x_grid.reshape(-1, 1)))
-            
-            # PHYSICAL CONSTRAINT: Clip heatmap prediction values at 0 as well
             grid_int = np.clip(grid_int, 0, None)
-            
             z_data = np.tile(grid_int, (len(y_grid), 1))
 
             fig_heat = px.imshow(
@@ -547,23 +550,35 @@ if not df.empty:
                 y=np.round(y_grid, 2),
                 labels=dict(x="Distance (m)", y="Lateral Spread", color="uT"),
                 color_continuous_scale=[
-                    [0.0, "#d4f0dc"],
+                    [0.0,  "#d4f0dc"],
                     [0.35, "#f5f0b0"],
                     [0.7,  "#f5c880"],
                     [1.0,  "#c94a4a"],
                 ],
                 aspect="auto",
             )
+
+            # FIX 3: Heatmap — all text forced to dark #1e3d1e so it's readable
             fig_heat.update_layout(
                 height=380,
-                font=dict(family="Inter", color=PC["text"]),
+                font=dict(family="Inter", color="#1e3d1e"),
                 plot_bgcolor=PC["bg"],
                 paper_bgcolor=PC["paper"],
                 margin=dict(l=20, r=20, t=30, b=20),
+                xaxis=dict(
+                    tickfont=dict(color="#1e3d1e", size=11),
+                    title_font=dict(color="#1e3d1e", size=12),
+                ),
+                yaxis=dict(
+                    tickfont=dict(color="#1e3d1e", size=11),
+                    title_font=dict(color="#1e3d1e", size=12),
+                ),
                 coloraxis=dict(
                     colorbar=dict(
-                        title=dict(text="uT", font=dict(color=PC["text"])),
-                        tickfont=dict(color=PC["tick"]),
+                        title=dict(text="uT", font=dict(color="#1e3d1e", size=12)),
+                        tickfont=dict(color="#1e3d1e", size=11),
+                        outlinecolor="rgba(90,138,90,0.3)",
+                        outlinewidth=1,
                     )
                 ),
             )
@@ -578,7 +593,12 @@ if not df.empty:
         has_geo = ("latitude" in df.columns and "longitude" in df.columns
                    and df[["latitude","longitude"]].notna().all().all())
 
-        RISK_COLORS = {"HIGH RISK": "#c94a4a", "MODERATE": "#b8881a", "SAFE": "#2e7d4f"}
+        # FIX 4: Correct semantic risk colours — red=high, amber=moderate, green=safe
+        RISK_COLORS = {
+            "HIGH RISK": "#c94a4a",
+            "MODERATE":  "#e8a020",
+            "SAFE":       "#2e7d4f",
+        }
 
         if has_geo:
             map_df = df_filtered.copy()
@@ -594,16 +614,22 @@ if not df.empty:
                     fig_map.add_trace(go.Scattermapbox(
                         lat=sub["latitude"], lon=sub["longitude"],
                         mode="markers",
-                        marker=dict(size=sub["size"], color=color, opacity=0.82),
+                        marker=dict(size=sub["size"], color=color, opacity=0.85),
                         text=sub["hover_text"],
                         hoverinfo="text",
                         name=level,
                     ))
             fig_map.update_layout(
-                mapbox=dict(style="carto-positron", zoom=10,
-                            center=dict(lat=df["latitude"].mean(), lon=df["longitude"].mean())),
-                legend=dict(bgcolor="rgba(245,250,245,0.9)", bordercolor="rgba(90,138,90,0.3)",
-                            borderwidth=1, font=dict(color="#2a4a2a")),
+                mapbox=dict(
+                    style="carto-positron", zoom=10,
+                    center=dict(lat=df["latitude"].mean(), lon=df["longitude"].mean())
+                ),
+                legend=dict(
+                    bgcolor="rgba(245,250,245,0.92)",
+                    bordercolor="rgba(90,138,90,0.3)",
+                    borderwidth=1,
+                    font=dict(color="#1e3d1e", size=12)
+                ),
                 margin=dict(l=0, r=0, t=0, b=0),
                 height=480,
                 paper_bgcolor="rgba(0,0,0,0)",
@@ -625,8 +651,9 @@ if not df.empty:
             demo_lon = 77.2090 + np.random.uniform(-0.05, 0.05, 15)
             demo_int = np.random.choice([1.0, 1.5, 2.5, 3.5, 4.0, 6.5, 7.2], 15)
             demo_df = pd.DataFrame({
-                "latitude": demo_lat, "longitude": demo_lon,
-                "intensity": demo_int,
+                "latitude":   demo_lat,
+                "longitude":  demo_lon,
+                "intensity":  demo_int,
                 "risk_level": [get_risk(v)[0] for v in demo_int],
             })
             demo_df["size"] = demo_df["intensity"].clip(1, 10) * 3
@@ -638,15 +665,19 @@ if not df.empty:
                     fig_demo.add_trace(go.Scattermapbox(
                         lat=sub["latitude"], lon=sub["longitude"],
                         mode="markers",
-                        marker=dict(size=sub["size"], color=color, opacity=0.8),
+                        marker=dict(size=sub["size"], color=color, opacity=0.85),
                         name=f"{level} (demo)",
                         hovertemplate=f"<b>{level}</b><br>Intensity: %{{text}} uT<extra></extra>",
                         text=sub["intensity"].round(1).astype(str),
                     ))
             fig_demo.update_layout(
                 mapbox=dict(style="carto-positron", zoom=11, center=dict(lat=28.6139, lon=77.2090)),
-                legend=dict(bgcolor="rgba(245,250,245,0.9)", bordercolor="rgba(90,138,90,0.3)",
-                            borderwidth=1, font=dict(color="#2a4a2a")),
+                legend=dict(
+                    bgcolor="rgba(245,250,245,0.92)",
+                    bordercolor="rgba(90,138,90,0.3)",
+                    borderwidth=1,
+                    font=dict(color="#1e3d1e", size=12)
+                ),
                 margin=dict(l=0, r=0, t=0, b=0),
                 height=480,
                 paper_bgcolor="rgba(0,0,0,0)",
