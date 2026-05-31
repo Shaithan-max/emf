@@ -34,16 +34,30 @@ html, body { background: transparent !important; }
 }
 [data-testid="stSidebar"] * { color: #d4e8d4 !important; }
 
-/* FIX 1: Sidebar collapse/expand arrow → forest green */
+/* FIX 1: Sidebar collapse/expand arrow → forest green (nuclear override) */
 [data-testid="collapsedControl"],
+[data-testid="collapsedControl"] *,
 [data-testid="collapsedControl"] svg,
+[data-testid="collapsedControl"] svg *,
+[data-testid="collapsedControl"] svg path,
+[data-testid="collapsedControl"] svg polyline,
+[data-testid="collapsedControl"] svg line,
 [data-testid="collapsedControl"] button,
 [data-testid="stSidebarCollapseButton"],
+[data-testid="stSidebarCollapseButton"] *,
 [data-testid="stSidebarCollapseButton"] svg,
-button[data-testid="baseButton-header"] svg {
+[data-testid="stSidebarCollapseButton"] svg *,
+[data-testid="stSidebarCollapseButton"] svg path,
+[data-testid="stSidebarCollapseButton"] svg polyline,
+button[data-testid="baseButton-header"],
+button[data-testid="baseButton-header"] *,
+button[data-testid="baseButton-header"] svg,
+button[data-testid="baseButton-header"] svg path,
+button[data-testid="baseButton-header"] svg polyline {
     color: #2e5c2e !important;
     fill: #2e5c2e !important;
     stroke: #2e5c2e !important;
+    background: transparent !important;
 }
 
 .hero-title {
@@ -647,8 +661,8 @@ if not df.empty:
             st.caption("Add latitude and longitude columns to your Supabase emf_readings table for real locations.")
 
             np.random.seed(42)
-            demo_lat = 28.6139 + np.random.uniform(-0.05, 0.05, 15)
-            demo_lon = 77.2090 + np.random.uniform(-0.05, 0.05, 15)
+            demo_lat = 12.9716 + np.random.uniform(-0.05, 0.05, 15)
+            demo_lon = 77.5946 + np.random.uniform(-0.05, 0.05, 15)
             demo_int = np.random.choice([1.0, 1.5, 2.5, 3.5, 4.0, 6.5, 7.2], 15)
             demo_df = pd.DataFrame({
                 "latitude":   demo_lat,
@@ -671,7 +685,7 @@ if not df.empty:
                         text=sub["intensity"].round(1).astype(str),
                     ))
             fig_demo.update_layout(
-                mapbox=dict(style="carto-positron", zoom=11, center=dict(lat=28.6139, lon=77.2090)),
+                mapbox=dict(style="carto-positron", zoom=11, center=dict(lat=12.9716, lon=77.5946)),
                 legend=dict(
                     bgcolor="rgba(245,250,245,0.92)",
                     bordercolor="rgba(90,138,90,0.3)",
