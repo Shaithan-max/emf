@@ -313,7 +313,7 @@ with st.sidebar:
     - Public limit: 100 uT
     """)
     st.markdown("---")
-    st.caption("EMF Risk Mapper v2.2 | Forest Edition")
+    st.caption("EMF Risk Mapper v2.3 | Forest Edition")
 
 
 # ===================== HEADER =====================
@@ -366,22 +366,27 @@ if not df.empty:
     max_dist = float(df["distance"].max()) if not df.empty else 10.0
     max_dist = max(max_dist, 10.0)
 
-    # --- NEW: MEAN-BASED DATA AGGREGATION ---
-    # We round distances to 1 decimal place (10 cm precision) to group duplicates
+    # --- DYNAMIC MEAN-BASED DATA AGGREGATION ---
     df_grouped = df.copy()
-    df_grouped["distance_rounded"] = df_grouped["distance"].round(1)
+    
+    if max_dist > 10.0:
+        # For large-scale datasets (0-100m), group by nearest 5 meters to smooth spatial steps
+        df_grouped["distance_rounded"] = (df_grouped["distance"] / 5).round() * 5
+    else:
+        # For close-range datasets (0-2m), group by nearest 10 centimeters (0.1m)
+        df_grouped["distance_rounded"] = df_grouped["distance"].round(1)
     
     # Group by distance and calculate the mean intensity
     df_aggregated = df_grouped.groupby("distance_rounded")["intensity"].mean().reset_index()
     df_aggregated.rename(columns={"distance_rounded": "distance"}, inplace=True)
-    # ----------------------------------------
+    # --------------------------------------------
 
-    # We use a weighted training approach on the aggregated data
+    # We use a weighted training approach so the model prioritizes real aggregated points
     if len(df_aggregated) >= 5:
         X_real = df_aggregated[["distance"]].values
         y_real = df_aggregated["intensity"].values
 
-        # Split 80% train / 20% test on real aggregated data
+        # Split 80% train / 20% test on real sensor data
         X_train, X_val, y_train, y_val = train_test_split(
             X_real, y_real, test_size=0.2, random_state=42
         )
@@ -394,7 +399,6 @@ if not df.empty:
         y_train_mixed = np.concatenate([y_train, y_synth.flatten()])
 
         # Define Sample Weights: Real training points are heavily weighted (12x)
-        # while synthetic points are weighted (1x) to keep the curve stable at limits.
         sample_weights = np.ones(len(X_train_mixed))
         sample_weights[:len(X_train)] = 12.0
 
@@ -418,7 +422,7 @@ if not df.empty:
         poly = PolynomialFeatures(degree=2)
         X_poly = poly.fit_transform(X)
         model = LinearRegression().fit(X_poly, y)
-        st.sidebar.info("Model trained on available aggregated data points.")
+        st.sidebar.info("Model trained on available data points.")
 
 
 # ===================== MAIN UI =====================
@@ -470,10 +474,11 @@ if not df.empty:
             fig.add_hrect(y0=5, y1=y_max, fillcolor="rgba(201,74,74,0.08)", line_width=0,
                           annotation_text="High Risk Zone", annotation_position="right")
 
-            # Real Data Points (We display your original unaggregated dataset here)
+            # --- PLOTTING MODIFICATION ---
+            # We now plot df_aggregated instead of df. This displays only the unique average dots.
             fig.add_trace(go.Scatter(
-                x=df["distance"], y=df["intensity"],
-                mode="markers", name="Real Sensor Readings",
+                x=df_aggregated["distance"], y=df_aggregated["intensity"],
+                mode="markers", name="Average Sensor Readings",
                 marker=dict(color=PC["a1"], size=10, line=dict(color="white", width=1.5)),
             ))
             
