@@ -364,7 +364,7 @@ if not df.empty:
     df_filtered = df[df["risk_level"] == risk_filter] if risk_filter != "All" else df.copy()
 
     max_dist = float(df["distance"].max()) if not df.empty else 10.0
-    max_dist = max(max_dist, 10.0)
+    max_dist = max(max_dist, 0.5)
 
     # --- DYNAMIC MEAN-BASED DATA AGGREGATION ---
     df_grouped = df.copy()
