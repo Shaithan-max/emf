@@ -402,16 +402,21 @@ if not df.empty:
     df["risk_level"] = df["intensity"].apply(lambda x: get_risk(x)[0])
     df_filtered = df[df["risk_level"] == risk_filter] if risk_filter != "All" else df.copy()
 
-    # Keep the raw readings for modelling and plotting so every measured point is visible.
-    df_plot = df[["distance", "intensity"]].copy()
-    df_plot = df_plot.dropna().sort_values("distance").reset_index(drop=True)
-
-    max_dist = float(df_plot["distance"].max()) if not df_plot.empty else 10.0
+    max_dist = float(df["distance"].max()) if not df.empty else 10.0
     max_dist = max(max_dist, 0.5)
 
-    if len(df_plot) >= 5:
-        X_real = df_plot[["distance"]].values
-        y_real = df_plot["intensity"].values
+    df_grouped = df.copy()
+    if max_dist > 10.0:
+        df_grouped["distance_rounded"] = (df_grouped["distance"] / 2).round() * 2
+    else:
+        df_grouped["distance_rounded"] = df_grouped["distance"].round(3)
+
+    df_aggregated = df_grouped.groupby("distance_rounded")["intensity"].mean().reset_index()
+    df_aggregated.rename(columns={"distance_rounded": "distance"}, inplace=True)
+
+    if len(df_aggregated) >= 5:
+        X_real = df_aggregated[["distance"]].values
+        y_real = df_aggregated["intensity"].values
 
         X_train, X_val, y_train, y_val = train_test_split(
             X_real, y_real, test_size=0.2, random_state=42
@@ -425,22 +430,18 @@ if not df.empty:
         sample_weights = np.ones(len(X_train_mixed))
         sample_weights[:len(X_train)] = 12.0
 
-        poly = PolynomialFeatures(degree=2)
+        poly = PolynomialFeatures(degree=3)
         X_train_poly = poly.fit_transform(X_train_mixed)
         model = LinearRegression().fit(X_train_poly, y_train_mixed, sample_weight=sample_weights)
 
         X_val_poly = poly.transform(X_val)
         r2_val = model.score(X_val_poly, y_val)
         st.session_state["r2_val"] = r2_val
+        st.sidebar.success(f"AI Model Trained!\nVal R² (Aggregated): {r2_val:.3f}")
 
-        if r2_val < 0:
-            st.sidebar.info(f"AI Model Trained!\nVal R²: {r2_val:.3f}")
-        else:
-            st.sidebar.success(f"AI Model Trained!\nVal R²: {r2_val:.3f}")
-
-    elif len(df_plot) >= 3:
-        X = df_plot[["distance"]].values
-        y = df_plot["intensity"].values
+    elif len(df_aggregated) >= 3:
+        X = df_aggregated[["distance"]].values
+        y = df_aggregated["intensity"].values
         poly = PolynomialFeatures(degree=2)
         X_poly = poly.fit_transform(X)
         model = LinearRegression().fit(X_poly, y)
@@ -484,9 +485,8 @@ if not df.empty:
     # ---- TAB 1: PREDICTIVE CURVE ----
     with tab1:
         if model is not None:
-            actual_min_dist = float(df_plot["distance"].min()) if not df_plot.empty else 0.0
-            actual_max_dist = float(df_plot["distance"].max()) if not df_plot.empty else max_dist
-            dist_range = np.linspace(actual_min_dist, actual_max_dist, 500).reshape(-1, 1)
+            actual_max_dist = float(df["distance"].max()) if not df.empty else max_dist
+            dist_range = np.linspace(0.0, actual_max_dist, 200).reshape(-1, 1)
 
             preds = model.predict(poly.transform(dist_range))
             preds = np.clip(preds, 0, None)
@@ -530,9 +530,9 @@ if not df.empty:
 
             # Average sensor readings scatter
             fig.add_trace(go.Scatter(
-                x=df_plot["distance"], y=df_plot["intensity"],
-                mode="markers", name="Sensor Readings",
-                marker=dict(color=PC["a1"], size=8, line=dict(color="white", width=1.0)),
+                x=df_aggregated["distance"], y=df_aggregated["intensity"],
+                mode="markers", name="Average Sensor Readings",
+                marker=dict(color=PC["a1"], size=10, line=dict(color="white", width=1.5)),
             ))
 
             # AI fit curve
@@ -552,33 +552,22 @@ if not df.empty:
 
             r2_to_show = st.session_state.get("r2_val", None)
             if r2_to_show is not None:
-                if r2_to_show < 0:
-                    st.markdown("""
-                    <div style="background-color: rgba(90,138,90,0.08); border-left: 4px solid #2e5c2e; padding: 12px; border-radius: 8px; margin-top: 15px;">
-                        <p style="margin: 0; font-family: 'Inter', sans-serif; font-size: 14px; color: #1e3d1e;">
-                            <strong>AI Model Accuracy (R² Score):</strong>
-                            <span style="font-weight:700; color:#2e5c2e;">Validation score not reliable</span> &nbsp;|&nbsp;
-                            <em>Model trained successfully, but the current validation data is not reliable enough to report a meaningful R² score.</em>
-                        </p>
-                    </div>
-                    """, unsafe_allow_html=True)
-                else:
-                    st.markdown(f"""
-                    <div style="background-color: rgba(90,138,90,0.08); border-left: 4px solid #2e5c2e; padding: 12px; border-radius: 8px; margin-top: 15px;">
-                        <p style="margin: 0; font-family: 'Inter', sans-serif; font-size: 14px; color: #1e3d1e;">
-                            <strong>AI Model Accuracy (R² Score):</strong>
-                            <span style="font-weight:700; color:#2e5c2e;">{r2_to_show:.4f}</span> &nbsp;|&nbsp;
-                            <em>This metric evaluates how accurately our prediction model matches your physical sensor data. A score closer to 1.00 indicates high fidelity.</em>
-                        </p>
-                    </div>
-                    """, unsafe_allow_html=True)
+                st.markdown(f"""
+                <div style="background-color: rgba(90,138,90,0.08); border-left: 4px solid #2e5c2e; padding: 12px; border-radius: 8px; margin-top: 15px;">
+                    <p style="margin: 0; font-family: 'Inter', sans-serif; font-size: 14px; color: #1e3d1e;">
+                        <strong>AI Model Accuracy (R² Score) on Aggregated Data:</strong>
+                        <span style="font-weight:700; color:#2e5c2e;">{r2_to_show:.4f}</span> &nbsp;|&nbsp;
+                        <em>This metric evaluates how accurately our prediction model matches your physical sensor data. A score closer to 1.00 indicates high fidelity.</em>
+                    </p>
+                </div>
+                """, unsafe_allow_html=True)
         else:
             st.info("Additional data is required to calculate the mathematical prediction curve.")
 
     # ---- TAB 2: HEATMAP ----
     with tab2:
         if model is not None:
-            actual_max_dist = float(df_plot["distance"].max()) if not df_plot.empty else max_dist
+            actual_max_dist = float(df["distance"].max()) if not df.empty else max_dist
             x_grid = np.linspace(0.01, actual_max_dist, 60)
             y_grid = np.linspace(0, 2, 15)
             grid_int = model.predict(poly.transform(x_grid.reshape(-1, 1)))
