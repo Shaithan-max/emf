@@ -306,9 +306,9 @@ def fetch_data():
 
 
 def get_risk(val):
-    if val > 5.0:
+    if val > 50.0:
         return "HIGH RISK", "#c94a4a"
-    if val > 2.0:
+    if val >= 20.0:
         return "MODERATE", "#b8881a"
     return "SAFE", "#2e7d4f"
 
