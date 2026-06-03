@@ -552,15 +552,20 @@ if not df.empty:
 
             r2_to_show = st.session_state.get("r2_val", None)
             if r2_to_show is not None:
-                st.markdown(f"""
-                <div style="background-color: rgba(90,138,90,0.08); border-left: 4px solid #2e5c2e; padding: 12px; border-radius: 8px; margin-top: 15px;">
-                    <p style="margin: 0; font-family: 'Inter', sans-serif; font-size: 14px; color: #1e3d1e;">
-                        <strong>AI Model Accuracy (R² Score) on Aggregated Data:</strong>
-                        <span style="font-weight:700; color:#2e5c2e;">{r2_to_show:.4f}</span> &nbsp;|&nbsp;
-                        <em>This metric evaluates how accurately our prediction model matches your physical sensor data. A score closer to 1.00 indicates high fidelity.</em>
-                    </p>
-                </div>
-                """, unsafe_allow_html=True)
+                if r2_to_show < 0:
+                    st.warning(
+                        "Model trained successfully, but the current validation data is not reliable enough to report a meaningful R² score."
+                    )
+                else:
+                    st.markdown(f"""
+                    <div style="background-color: rgba(90,138,90,0.08); border-left: 4px solid #2e5c2e; padding: 12px; border-radius: 8px; margin-top: 15px;">
+                        <p style="margin: 0; font-family: 'Inter', sans-serif; font-size: 14px; color: #1e3d1e;">
+                            <strong>AI Model Accuracy (R² Score):</strong>
+                            <span style="font-weight:700; color:#2e5c2e;">{r2_to_show:.4f}</span> &nbsp;|&nbsp;
+                            <em>This metric evaluates how accurately our prediction model matches your physical sensor data. A score closer to 1.00 indicates high fidelity.</em>
+                        </p>
+                    </div>
+                    """, unsafe_allow_html=True)
         else:
             st.info("Additional data is required to calculate the mathematical prediction curve.")
 
