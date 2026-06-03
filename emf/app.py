@@ -414,6 +414,13 @@ if not df.empty:
     df_aggregated = df_grouped.groupby("distance_rounded")["intensity"].mean().reset_index()
     df_aggregated.rename(columns={"distance_rounded": "distance"}, inplace=True)
 
+    # Calculate Pearson Correlation Coefficient (r)
+    if len(df_aggregated) >= 2:
+        correlation = df_aggregated["distance"].corr(df_aggregated["intensity"])
+        st.session_state["correlation"] = correlation
+    else:
+        st.session_state["correlation"] = None
+
     if len(df_aggregated) >= 5:
         X_real = df_aggregated[["distance"]].values
         y_real = df_aggregated["intensity"].values
@@ -434,10 +441,10 @@ if not df.empty:
         X_train_poly = poly.fit_transform(X_train_mixed)
         model = LinearRegression().fit(X_train_poly, y_train_mixed, sample_weight=sample_weights)
 
-        X_val_poly = poly.transform(X_val)
-        r2_val = model.score(X_val_poly, y_val)
-        st.session_state["r2_val"] = r2_val
-        st.sidebar.success(f"AI Model Trained!\nVal R² (Aggregated): {r2_val:.3f}")
+        if st.session_state["correlation"] is not None:
+            st.sidebar.success(f"AI Model Trained!\nCorrelation (r): {st.session_state['correlation']:.3f}")
+        else:
+            st.sidebar.success("AI Model Trained!")
 
     elif len(df_aggregated) >= 3:
         X = df_aggregated[["distance"]].values
@@ -445,7 +452,10 @@ if not df.empty:
         poly = PolynomialFeatures(degree=2)
         X_poly = poly.fit_transform(X)
         model = LinearRegression().fit(X_poly, y)
-        st.sidebar.info("Model trained on available data points.")
+        if st.session_state["correlation"] is not None:
+            st.sidebar.info(f"Model trained on available data points.\nCorrelation (r): {st.session_state['correlation']:.3f}")
+        else:
+            st.sidebar.info("Model trained on available data points.")
 
 
 # ===================== MAIN UI =====================
@@ -495,12 +505,12 @@ if not df.empty:
 
             fig = go.Figure()
 
-            # FIX 2: Zone fills — removed annotation_position to avoid right-side overlap
+            # Zone fills
             fig.add_hrect(y0=0,   y1=20,    fillcolor="rgba(46,125,79,0.13)",  line_width=0)
             fig.add_hrect(y0=20,  y1=50,    fillcolor="rgba(184,136,26,0.13)", line_width=0)
             fig.add_hrect(y0=50,  y1=y_max, fillcolor="rgba(201,74,74,0.13)",  line_width=0)
 
-            # FIX 2 cont.: Annotations pinned left, vertically centred in each band, colour-coded
+            # Annotations pinned left
             fig.add_annotation(
                 x=0.01, xref="paper",
                 y=10,
@@ -550,14 +560,14 @@ if not df.empty:
             style_fig(fig)
             st.plotly_chart(fig, use_container_width=True)
 
-            r2_to_show = st.session_state.get("r2_val", None)
-            if r2_to_show is not None:
+            corr_to_show = st.session_state.get("correlation", None)
+            if corr_to_show is not None:
                 st.markdown(f"""
                 <div style="background-color: rgba(90,138,90,0.08); border-left: 4px solid #2e5c2e; padding: 12px; border-radius: 8px; margin-top: 15px;">
                     <p style="margin: 0; font-family: 'Inter', sans-serif; font-size: 14px; color: #1e3d1e;">
-                        <strong>AI Model Accuracy (R² Score) on Aggregated Data:</strong>
-                        <span style="font-weight:700; color:#2e5c2e;">{r2_to_show:.4f}</span> &nbsp;|&nbsp;
-                        <em>This metric evaluates how accurately our prediction model matches your physical sensor data. A score closer to 1.00 indicates high fidelity.</em>
+                        <strong>Pearson Correlation Coefficient (r) on Aggregated Data:</strong>
+                        <span style="font-weight:700; color:#2e5c2e;">{corr_to_show:.4f}</span> &nbsp;|&nbsp;
+                        <em>This metric evaluates the strength and direction of the linear relationship. A negative coefficient (closer to -1.0) shows that EMF intensity decreases as distance from the source increases.</em>
                     </p>
                 </div>
                 """, unsafe_allow_html=True)
@@ -588,7 +598,6 @@ if not df.empty:
                 aspect="auto",
             )
 
-            # FIX 3: Heatmap — all text forced to dark #1e3d1e so it's readable
             fig_heat.update_layout(
                 height=380,
                 font=dict(family="Inter", color="#1e3d1e"),
@@ -623,7 +632,6 @@ if not df.empty:
         has_geo = ("latitude" in df.columns and "longitude" in df.columns
                    and df[["latitude","longitude"]].notna().all().all())
 
-        # FIX 4: Correct semantic risk colours — red=high, amber=moderate, green=safe
         RISK_COLORS = {
             "HIGH RISK": "#c94a4a",
             "MODERATE":  "#e8a020",
