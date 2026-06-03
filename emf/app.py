@@ -346,7 +346,7 @@ with st.sidebar:
 
     risk_filter = st.selectbox("Risk Level Filter", ["All", "HIGH RISK", "MODERATE", "SAFE"])
 
-    alert_threshold = st.slider("Alert Threshold (uT)", min_value=0.5, max_value=10.0, value=2.0, step=0.5)
+    alert_threshold = st.slider("Alert Threshold (uT)", min_value=5.0, max_value=100.0, value=20.0, step=5.0)
 
     auto_refresh = st.checkbox("Auto-refresh data", value=False)
     if auto_refresh:
@@ -355,9 +355,9 @@ with st.sidebar:
     st.markdown("---")
     st.markdown("**WHO EMF Guidelines**")
     st.markdown("""
-    - Safe: below 2 uT  
-    - Moderate: 2 to 5 uT  
-    - High Risk: above 5 uT  
+    - Safe: below 20 uT  
+    - Moderate: 20 to 50 uT  
+    - High Risk: above 50 uT  
     - Public limit: 100 uT
     """)
     st.markdown("---")
@@ -407,7 +407,7 @@ if not df.empty:
 
     df_grouped = df.copy()
     if max_dist > 10.0:
-        df_grouped["distance_rounded"] = (df_grouped["distance"] / 5).round() * 5
+        df_grouped["distance_rounded"] = (df_grouped["distance"] / 2).round() * 2
     else:
         df_grouped["distance_rounded"] = df_grouped["distance"].round(3)
 
@@ -457,7 +457,7 @@ if not df.empty:
     st.markdown('<p class="section-label">Live Readings</p>', unsafe_allow_html=True)
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Current Intensity", f"{latest['intensity']} uT", delta=label, delta_color="off")
-    c2.metric("Distance from Source", f"{latest['distance']} m")
+    c2.metric("Distance from Source", f"{latest['distance']} cm")
     c3.metric("Total Readings", len(df))
     high_ct = len(df[df["risk_level"] == "HIGH RISK"])
     c4.metric("High Risk Zones", high_ct, delta="Active" if high_ct > 0 else "None", delta_color="inverse" if high_ct > 0 else "normal")
@@ -468,7 +468,7 @@ if not df.empty:
     render_alert(latest["intensity"])
 
     breaches = df[df["intensity"] > alert_threshold]
-    if len(breaches) > 0 and alert_threshold != 2.0:
+    if len(breaches) > 0 and alert_threshold != 20.0:
         st.markdown(f"""
         <div class="alert-moderate">
             <p class="alert-title">Custom Threshold Breach</p>
@@ -496,14 +496,15 @@ if not df.empty:
             fig = go.Figure()
 
             # FIX 2: Zone fills — removed annotation_position to avoid right-side overlap
-            fig.add_hrect(y0=0,   y1=2,     fillcolor="rgba(46,125,79,0.13)",  line_width=0)
-            fig.add_hrect(y0=2,   y1=5,     fillcolor="rgba(184,136,26,0.13)", line_width=0)
-            fig.add_hrect(y0=5,   y1=y_max, fillcolor="rgba(201,74,74,0.13)",  line_width=0)
+            fig.add_hrect(y0=0,   y1=20,    fillcolor="rgba(46,125,79,0.13)",  line_width=0)
+            fig.add_hrect(y0=20,  y1=50,    fillcolor="rgba(184,136,26,0.13)", line_width=0)
+            fig.add_hrect(y0=50,  y1=y_max, fillcolor="rgba(201,74,74,0.13)",  line_width=0)
 
             # FIX 2 cont.: Annotations pinned left, vertically centred in each band, colour-coded
             fig.add_annotation(
                 x=0.01, xref="paper",
-                y=1,    yref="y",
+                y=10,
+                yref="y",
                 text=" Safe Zone",
                 showarrow=False, xanchor="left",
                 font=dict(color="#2e7d4f", size=11, family="Inter"),
@@ -511,7 +512,8 @@ if not df.empty:
             )
             fig.add_annotation(
                 x=0.01, xref="paper",
-                y=3.5,  yref="y",
+                y=35,
+                yref="y",
                 text="Moderate Zone",
                 showarrow=False, xanchor="left",
                 font=dict(color="#b8881a", size=11, family="Inter"),
@@ -519,7 +521,7 @@ if not df.empty:
             )
             fig.add_annotation(
                 x=0.01, xref="paper",
-                y=y_max - (y_max - 5) * 0.25, yref="y",
+                y=max(60, y_max - (y_max - 50) * 0.25), yref="y",
                 text="!! High Risk Zone",
                 showarrow=False, xanchor="left",
                 font=dict(color="#c94a4a", size=11, family="Inter"),
@@ -541,7 +543,7 @@ if not df.empty:
             ))
 
             fig.update_layout(
-                xaxis_title="Distance from Source (m)",
+                xaxis_title="Distance from Source (cm)",
                 yaxis_title="EMF Intensity (uT)",
                 height=420,
             )
@@ -576,7 +578,7 @@ if not df.empty:
                 z_data,
                 x=np.round(x_grid, 2),
                 y=np.round(y_grid, 2),
-                labels=dict(x="Distance (m)", y="Lateral Spread", color="uT"),
+                labels=dict(x="Distance (cm)", y="Lateral Spread", color="uT"),
                 color_continuous_scale=[
                     [0.0,  "#d4f0dc"],
                     [0.35, "#f5f0b0"],
@@ -632,7 +634,7 @@ if not df.empty:
             map_df = df_filtered.copy()
             map_df["size"] = map_df["intensity"].clip(1, 10) * 3
             map_df["hover_text"] = map_df.apply(
-                lambda r: f"<b>{r['risk_level']}</b><br>Intensity: {r['intensity']} uT<br>Distance: {r['distance']} m",
+                lambda r: f"<b>{r['risk_level']}</b><br>Intensity: {r['intensity']} uT<br>Distance: {r['distance']} cm",
                 axis=1
             )
             fig_map = go.Figure()
